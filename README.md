@@ -4,3 +4,7 @@ Then open another window, start a Python shell, and run:<br>
 <code> >>> from pyngrok import ngrok</code><br>
 <code> >>> https_tunnel = ngrok.connect(bind_tls=True)</code><br>
 <code> >>> https_tunnel</code>
+
+Using Chrome or Firefox, navigate to the first address printed.
+
+(Note that the <code>pyngrok</code> package is required for setting up the server - use <code>pip install pyngrok</code> if it is not installed.)
