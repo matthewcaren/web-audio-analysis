@@ -18,6 +18,7 @@
 	  let gumStream;
 
 	  let isRecording = false;
+      document.isRecording = false;
 
 	  let micNode = null;
 	  let essentiaNode = null;
@@ -91,6 +92,7 @@
 		  cancelAnimationFrame(animationID);
 
 		  isRecording = false;
+          document.isRecording = false;
 		}
 	  });
 
@@ -138,6 +140,7 @@
 			draw(analyserData);
 
 			isRecording = true;
+            document.isRecording = true;
 		  } else {
 			throw 'Mic stream not active';
 		  }
@@ -157,12 +160,12 @@
 	<script src="https://cdn.plot.ly/plotly-2.8.3.min.js"></script>
 
 
-
 	<div class="ui main_wrapper landing-image">
 	<div class="ui header centered" id="header">
 	  <div>
 		  <h1 class="ui header white-text" style="color: #444; padding-top: 50px;">RMS and Spectral Centroid meter</h1>
 	  </div>
+
 
 	</div>
 	<div class="body-container">
@@ -179,13 +182,12 @@
 		  <span id="spec-value">0</span> <span>hz</span>
 		</div>
 
-		<div id="specGraph" style="width: 50rem; height: 25rem; text-align: center;"></div>
+        <div id="rmsGraph" style="width: 50rem; height: 22rem; text-align: center;"></div>
+		<div id="specGraph" style="width: 50rem; height: 22rem; text-align: center;"></div>
 
-		<div id="myLog" style="color: #000; font-size: small; width: fit-content; height: fit-content; text-align: center;"></div>
+		<div id="myLog" style="color: #000; font-size: small; width: fit-content; height: fit-content; text-align: center; margin-bottom: 2rem;"></div>
 	  </div>
 	</div>
-
-
 
   <script src="./realtime-grapher.js"></script>
   </body>

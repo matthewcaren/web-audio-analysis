@@ -1,36 +1,63 @@
-var arrayLength = 100
-var dataArray = []
+var dataArrayLength = 100
+var rmsArray = []
 
 function getRMS() {
-  return document.rmsOut;
+    return document.rmsOut;
 }
 
 function getSpec() {
-  return document.specOut;
+    return document.specOut;
 }
 
-GRAPH_DIV = document.getElementById('specGraph');
 
-dataArray = Array(arrayLength).fill(0)
+RMS_GRAPH_DIV = document.getElementById('rmsGraph');
+SPEC_GRAPH_DIV = document.getElementById('specGraph');
 
-Plotly.newPlot(GRAPH_DIV, [{
-  y: [0,0],
-  mode: 'lines',
-  line: {color: '#FC5656'}
+rmsArray = Array(dataArrayLength).fill(undefined)
+specArray = Array(dataArrayLength).fill(undefined)
+
+Plotly.newPlot(RMS_GRAPH_DIV, [{
+    y: [0, undefined],
+    mode: 'lines',
+    line: {
+        color: '#FC5656',
+        shape: 'linear'
+    }
 }]);
+
+Plotly.newPlot(SPEC_GRAPH_DIV, [{
+    y: [0, undefined],
+    mode: 'lines',
+    line: {
+        color: '#FC5656',
+        shape: 'linear'
+    }
+}]);
+
 
 var cnt = 0;
 
 var interval = setInterval(function() {
-  var y = getRMS()
-  dataArray = dataArray.concat(y)
-  dataArray.splice(0, 1)
+    if (document.isRecording) {
+        var newRMS = getRMS()
+        rmsArray = rmsArray.concat(newRMS)
+        rmsArray.splice(0, 1)
 
-  var data_update = {
-    y: [dataArray]
-  };
+        var newSpec = getSpec()
+        specArray = specArray.concat(newSpec)
+        specArray.splice(0, 1)
 
-  Plotly.update('specGraph', data_update)
+        var rms_update = {
+            y: [rmsArray]
+        };
 
-  if(cnt === 100) clearInterval(interval);
+        var spec_update = {
+            y: [specArray]
+        };
+
+        Plotly.update('rmsGraph', rms_update)
+        Plotly.update('specGraph', spec_update)
+    }
+
+    if(cnt === 100) clearInterval(interval);
 }, 50);
