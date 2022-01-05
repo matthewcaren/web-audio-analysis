@@ -34,11 +34,16 @@ class EssentiaWorkletProcessor extends AudioWorkletProcessor {
 
     // In this case we compute the Root Mean Square of every input audio frame
     // check https://mtg.github.io/essentia.js/docs/api/Essentia.html#RMS
+
     let rmsFrame = this.essentia.RMS(vectorInput) // input audio frame
+    let specFrame = this.essentia.SpectralCentroidTime(vectorInput)
 
     // console.log("Processed audio buffer stream using essentia.js worklet with size: " + outputArray.length + " frames.");
 
+    // console.log(this.essentia.algorithmNames);
+
     output[0][0] = rmsFrame.rms;
+    output[0][1] = specFrame.centroid;
 
     return true;
   }
