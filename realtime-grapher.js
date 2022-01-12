@@ -1,6 +1,14 @@
 var dataArrayLength = 100
 var rmsArray = []
 
+FREQ_MULTIPLIER = 44100/1024;
+fft_xaxis = []
+
+for (var i = 0; i < 1024; i++) {
+    fft_xaxis.push(i * FREQ_MULTIPLIER);
+}
+
+
 function getRMS() {
     return document.rmsOut;
 }
@@ -10,6 +18,7 @@ function getSpec() {
 }
 
 function getFFT() {
+    // console.log(document.fftOut)
     return document.fftOut;
 }
 
@@ -52,7 +61,8 @@ Plotly.newPlot(SPEC_GRAPH_DIV, [{
 }]);
 
 Plotly.newPlot(FFT_GRAPH_DIV, [{
-    y: [0, undefined],
+    x: fft_xaxis,
+    y: [undefined],
     mode: 'lines',
     line: {
         color: '#FC5656',
