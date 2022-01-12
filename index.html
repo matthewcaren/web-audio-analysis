@@ -11,151 +11,242 @@
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
 	<script src="./mic-toggle-button.js"></script>
+    <script>
+        exports = {};
+    </script>
+    <script>
+        // From a series of URL to js files, get an object URL that can be loaded in an
+        // AudioWorklet. This is useful to be able to use multiple files (utils, data
+        // structure, main DSP, etc.) without either using static imports, eval, manual
+        // concatenation with or without a build step, etc.
+        function URLFromFiles(files) {
+            const promises = files
+                .map((file) => fetch(file)
+                    .then((response) => response.text()));
+
+            return Promise
+                .all(promises)
+                .then((texts) => {
+                    texts.unshift("var exports = {};"); // hack to make injected umd modules work
+                    const text = texts.join('');
+                    const blob = new Blob([text], {type: "application/javascript"});
+
+                    return URL.createObjectURL(blob);
+                });
+        }
+    </script>
+    <script src="./ringbuf.js"></script>
 	<script type="module">
-	  import { createEssentiaNode } from "./essentia-worklet-node.js";
+        import { createEssentiaNode } from "./essentia-worklet-node.js";
 
-	  let audioContext;
-	  let gumStream;
+        // // web audio API AudioContext setup
+        // let AudioContext;
+        // // global var for web audio API AudioContext
+        // let audioCtx;
+        // let bufferSize = 1024;
+        // let hopSize = 512;
+        // let melNumBands = 96;
+        //
+        // try {
+        //     AudioContext = window.AudioContext || window.webkitAudioContext;
+        //     audioCtx = new AudioContext();
+        // } catch (e) {
+        //     throw "Could not instantiate AudioContext: " + e.message;
+        // }
 
-	  let isRecording = false;
-      document.isRecording = false;
+        // getUserMedia stream for mic input
+        let audioContext;
+        let gumStream;
 
-	  let micNode = null;
-	  let essentiaNode = null;
-	  let analyserNode = null;
-	  let analyserData = null;
+        let isRecording = false;
+        document.isRecording = false;
 
-	  let animationID;
+        let micNode = null;
+        let essentiaNode = null;
+        let analyserNode = null;
+        let analyserData = null;
+        let fftNode = null;
+        let fftData = null;
+        let endNode = null;
 
-	  const rmsValue = document.querySelector("#rms-value");
-	  const specValue = document.querySelector("#spec-value");
+        let animationID;
 
-	  document.rmsOut = 0;
-	  document.specOut = 0;
+        const rmsValue = document.querySelector("#rms-value");
+        const specValue = document.querySelector("#spec-value");
 
-	  class Smoother {
-		constructor(windowSize=10) {
-		  this.size = windowSize;
-		  this.buffer = new Array(this.size).fill(0);
-		  this.oldestVal = 0;
-		  this.sum = 0;
-		  this.firstTime = true;
-		}
+        document.rmsOut = 0;
+        document.specOut = 0;
 
-		lowpass(val) {
-		  // computes moving average
-		  this.buffer.push(val);
-		  this.oldestVal = this.buffer.shift();
+        class Smoother {
+            constructor(windowSize=10) {
+                this.size = windowSize;
+                this.buffer = new Array(this.size).fill(0);
+                this.oldestVal = 0;
+                this.sum = 0;
+                this.firstTime = true;
+            }
 
-		  if (this.firstTime) {
-			this.sum = this.buffer.reduce((acc, v) => acc + v);
-			this.firstTime = false;
-		  } else {
-			this.sum = (this.sum - this.oldestVal) + val;
-		  }
-		  const avg = this.sum / this.size;
-		  return Math.round(avg);
-		}
-	  }
+            lowpass(val) {
+                // computes moving average
+                this.buffer.push(val);
+                this.oldestVal = this.buffer.shift();
 
-	  const RMSSmoother = new Smoother(30);
-	  const SpecSmoother = new Smoother(30);
+                if (this.firstTime) {
+                this.sum = this.buffer.reduce((acc, v) => acc + v);
+                this.firstTime = false;
+                } else {
+                this.sum = (this.sum - this.oldestVal) + val;
+                }
+                const avg = this.sum / this.size;
+                return Math.round(avg);
+            }
+        }
 
-	  // show console.log on html div
-	  window.console.logToScreen = function(str) {
-		let node = document.createElement("div");
-		node.appendChild(document.createTextNode(str));
-		document.getElementById("myLog").appendChild(node);
-	  };
+        const RMSSmoother = new Smoother(30);
+        const SpecSmoother = new Smoother(30);
 
-	  const audioButton = document.querySelector('mic-toggle-button');
+        // show console.log on html div
+        window.console.logToScreen = function(str) {
+            let node = document.createElement("div");
+            node.appendChild(document.createTextNode(str));
+            document.getElementById("myLog").appendChild(node);
+        };
 
-	  audioButton.addEventListener('click', function() {
-		if(!isRecording) {
-			audioContext = audioButton.audio.ctx;
-			startEssentiaAnalyser(audioContext).then(()=>console.logToScreen('essentia analyzer started'));
-			return;
-		}
-		if(isRecording) {
-		  gumStream.getAudioTracks().forEach((track) => {
-			track.stop();
-			gumStream.removeTrack(track);
-		  });
-		  console.logToScreen('Closing audio context ...');
+        const audioButton = document.querySelector('mic-toggle-button');
 
-		  micNode.disconnect();
-		  analyserNode.disconnect();
-		  essentiaNode.disconnect();
-		  // micNode = null;
-		  // essentiaNode = null;
+        audioButton.addEventListener('click', function() {
+            if(!isRecording) {
+            	audioContext = audioButton.audio.ctx;
+            	startEssentiaAnalyser(audioContext).then(()=>console.logToScreen('essentia analyzer started'));
+            	return;
+            }
+            if(isRecording) {
+                gumStream.getAudioTracks().forEach((track) => {
+                    track.stop();
+                    gumStream.removeTrack(track);
+                });
+                console.logToScreen('Closing audio context ...');
 
-		  cancelAnimationFrame(animationID);
+                micNode.disconnect();
+                analyserNode.disconnect();
+                essentiaNode.disconnect();
+                // micNode = null;
+                // essentiaNode = null;
 
-		  isRecording = false;
-          document.isRecording = false;
-		}
-	  });
+                cancelAnimationFrame(animationID);
 
-	  function draw () {
-		animationID = requestAnimationFrame(draw);
-		analyserNode.getFloatTimeDomainData(analyserData);
-		let rms = analyserData[0];
-		let dbFS = 20 * Math.log10((rms + Number.EPSILON) * Math.sqrt(2));
-		// lowpass value for easier visualization
-		let smoothedRMS = RMSSmoother.lowpass(dbFS);
-		rmsValue.innerText = smoothedRMS;
-		document.rmsOut = dbFS;
+                isRecording = false;
+                document.isRecording = false;
+            }
+        });
 
-		let spec = analyserData[1];
-		// lowpass value for easier visualization
-		let smoothedSpec = SpecSmoother.lowpass(spec);
-		specValue.innerText = smoothedSpec;
-		document.specOut = spec;
-	  }
+        function draw () {
+            animationID = requestAnimationFrame(draw);
+            analyserNode.getFloatTimeDomainData(analyserData);
+            fftNode.getFloatFrequencyData(fftData);
+            document.fftOut = fftData;
 
-	  // connect the nodes
-	  async function startEssentiaAnalyser(audioContext) {
-		async function setupAudioGraph(stream) {
-		  gumStream = stream;
-		  if (gumStream.active) {
-			console.logToScreen('Sample Rate = ' + audioContext.sampleRate);
-			micNode = audioContext.createMediaStreamSource(stream);
-			analyserNode = audioContext.createAnalyser();
-			analyserNode.fftSize = 2 * 128;
-			analyserData = new Float32Array(analyserNode.frequencyBinCount);
+            let rms = analyserData[0];
+            let dbFS = 20 * Math.log10((rms + Number.EPSILON) * Math.sqrt(2));
+            // lowpass value for easier visualization
+            let smoothedRMS = RMSSmoother.lowpass(dbFS);
+            rmsValue.innerText = smoothedRMS;
+            document.rmsOut = dbFS;
 
-			// create essentia node only once (avoid registering processor repeatedly)
-			if (!essentiaNode) {
-			  console.logToScreen("Creating EssentiaNode instance ...")
-			  essentiaNode = await createEssentiaNode(audioContext);
-			}
+            let spec = analyserData[1];
+            // lowpass value for easier visualization
+            let smoothedSpec = SpecSmoother.lowpass(spec);
+            specValue.innerText = smoothedSpec;
+            document.specOut = spec;
+        }
 
-			console.logToScreen("Mic => essentiaWorklet => audioContext.destination ....");
-			console.logToScreen("Calculating RMS level from microphone input ....");
-			// connect mic stream to essentia node
-			audioButton.connectToAudioNode(essentiaNode);
-			// If it isn't connected to destination, the worklet is not executed
-			essentiaNode.connect(analyserNode);
+        // connect the nodes
+        async function startEssentiaAnalyser(audioContext) {
+            async function setupAudioGraph(stream) {
+                gumStream = stream;
+                if (gumStream.active) {
+                    // // ### FFT THINGS ###
+                    // if (audioCtx.state == "closed") {
+                    //     audioCtx = new AudioContext();
+                    // }
+                    // else if (audioCtx.state == "suspended") {
+                    //     audioCtx.resume();
+                    // }
+                    //
+                    // mic = audioCtx.createMediaStreamSource(gumStream);
+                    // gain = audioCtx.createGain();
+                    // gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    //
+                    // let codeForProcessorModule = ["https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.umd.js",
+                    // "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-extractor.umd.js",
+                    // "melspectrogram-processor.js",
+                    // "https://unpkg.com/ringbuf.js@0.1.0/dist/index.js"];
+                    //
+                    // // inject Essentia.js code into AudioWorkletGlobalScope context, then setup audio graph and start animation
+                    // URLFromFiles(codeForProcessorModule)
+                    // .then((concatenatedCode) => {
+                    //     audioCtx.audioWorklet.addModule(concatenatedCode)
+                    //     .then(setupAudioGraph)
+                    //     .catch( function moduleLoadRejected(msg) {
+                    //       console.log(`There was a problem loading the AudioWorklet module code: \n ${msg}`);
+                    //     });
+                    // })
+                    // .catch((msg) => {
+                    //     console.log(`There was a problem retrieving the AudioWorklet module code: \n ${msg}`);
+                    // })
+                    //
+                    // // #### END FFT THINGS ####
 
-			draw(analyserData);
+                	console.logToScreen('Sample Rate = ' + audioContext.sampleRate);
+                	micNode = audioContext.createMediaStreamSource(stream);
+                	analyserNode = audioContext.createAnalyser();
+                	analyserNode.fftSize = 2 * 512;
+                	analyserData = new Float32Array(analyserNode.frequencyBinCount);
 
-			isRecording = true;
-            document.isRecording = true;
-		  } else {
-			throw 'Mic stream not active';
-		  }
-		}
-		if (navigator.mediaDevices.getUserMedia) {
-		  document.getElementById("myLog").innerHTML = ""; // empty on-screen log
-		  console.logToScreen(".................................")
-		  console.logToScreen('Initializing mic input stream ...')
-		  navigator.mediaDevices.getUserMedia({audio: {sampleRate: {exact: audioContext.sampleRate }}, video: false}).then((stream) => {
-			setupAudioGraph(stream);
-		  }).catch(function(message) {
-			throw 'Could not access microphone - ' + message;
-		  });
-		} else {throw 'Could not access microphone - getUserMedia not available';}
-	  }
+                    fftNode = audioContext.createAnalyser();
+                    fftNode.smoothingTimeConstant = 0.5
+                	fftNode.fftSize = 2 * 512;
+                    console.log("fft bin count = " + fftNode.frequencyBinCount)
+                	fftData = new Float32Array(fftNode.frequencyBinCount);
+
+                    endNode = audioContext.createAnalyser();
+
+
+                	// create essentia node only once (avoid registering processor repeatedly)
+                	if (!essentiaNode) {
+                        console.logToScreen("Creating EssentiaNode instance ...")
+                        essentiaNode = await createEssentiaNode(audioContext);
+                	}
+
+                	console.logToScreen("Mic => essentiaWorklet => audioContext.destination ....");
+                	console.logToScreen("Calculating RMS / spectral centroid from microphone input ....");
+                	// connect mic stream to essentia node
+                	audioButton.connectToAudioNode(essentiaNode);
+                	// If it isn't connected to destination, the worklet is not executed
+                	essentiaNode.connect(analyserNode);
+
+                    audioButton.connectToAudioNode(fftNode);
+                    fftNode.connect(endNode)
+
+                	draw(analyserData);
+
+                	isRecording = true;
+                    document.isRecording = true;
+                } else {
+                    throw 'Mic stream not active';
+                }
+            }
+            if (navigator.mediaDevices.getUserMedia) {
+                document.getElementById("myLog").innerHTML = ""; // empty on-screen log
+                console.logToScreen(".................................")
+                console.logToScreen('Initializing mic input stream ...')
+                navigator.mediaDevices.getUserMedia({audio: {sampleRate: {exact: audioContext.sampleRate }}, video: false}).then((stream) => {
+                    setupAudioGraph(stream);
+                }).catch(function(message) {
+                    throw 'Could not access microphone - ' + message;
+                });
+            } else {throw 'Could not access microphone - getUserMedia not available';}
+        }
 	</script>
 	<script src="https://cdn.plot.ly/plotly-2.8.3.min.js"></script>
 
@@ -165,7 +256,6 @@
 	  <div>
 		  <h1 class="ui header white-text" style="color: #444; padding-top: 50px;">RMS and Spectral Centroid meter</h1>
 	  </div>
-
 
 	</div>
 	<div class="body-container">
@@ -184,6 +274,7 @@
 
         <div id="rmsGraph" style="width: 50rem; height: 22rem; text-align: center;"></div>
 		<div id="specGraph" style="width: 50rem; height: 22rem; text-align: center;"></div>
+        <div id="fftGraph" style="width: 50rem; height: 22rem; text-align: center;"></div>
 
 		<div id="myLog" style="color: #000; font-size: small; width: fit-content; height: fit-content; text-align: center; margin-bottom: 2rem;"></div>
 	  </div>
