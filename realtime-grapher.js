@@ -1,7 +1,8 @@
-var dataArrayLength = 100
+var dataArrayLength = 80
 var rmsArray = []
+var specArray = []
 
-FREQ_MULTIPLIER = 44100/1024;
+FREQ_MULTIPLIER = 44100/2048; // careful!! do not change without changing value in index
 fft_xaxis = []
 
 for (var i = 0; i < 1024; i++) {
@@ -18,7 +19,6 @@ function getSpec() {
 }
 
 function getFFT() {
-    // console.log(document.fftOut)
     return document.fftOut;
 }
 
@@ -30,8 +30,14 @@ FFT_GRAPH_DIV = document.getElementById('fftGraph');
 rmsArray = Array(dataArrayLength).fill(undefined)
 specArray = Array(dataArrayLength).fill(undefined)
 
-var layout = {
-    title: 'FFT',
+var graphLayout = {
+    margin: {
+        t: 30,
+        b: 30
+    }
+}
+
+var fftLayout = {
     xaxis: {
         type: 'log'
     },
@@ -49,7 +55,7 @@ Plotly.newPlot(RMS_GRAPH_DIV, [{
         color: '#FC5656',
         shape: 'linear'
     }
-}]);
+}], graphLayout, {staticPlot: true});
 
 Plotly.newPlot(SPEC_GRAPH_DIV, [{
     y: [0, undefined],
@@ -58,7 +64,7 @@ Plotly.newPlot(SPEC_GRAPH_DIV, [{
         color: '#FC5656',
         shape: 'linear'
     }
-}]);
+}], graphLayout, {staticPlot: true});
 
 Plotly.newPlot(FFT_GRAPH_DIV, [{
     x: fft_xaxis,
@@ -69,7 +75,7 @@ Plotly.newPlot(FFT_GRAPH_DIV, [{
         shape: 'linear'
     },
     log_x: true
-}], layout);
+}], fftLayout, {staticPlot: true});
 
 
 var cnt = 0;
@@ -105,3 +111,16 @@ var interval = setInterval(function() {
 
     if(cnt === 100) clearInterval(interval);
 }, 50);
+
+
+
+function downloadData() {
+    console.log(rmsArray);
+    const data = [rmsArray, specArray];
+    let csvContent = "data:text/csv;charset=utf-8," + data.map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'audio-features.csv');
+    link.click();
+}

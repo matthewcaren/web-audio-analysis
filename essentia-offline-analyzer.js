@@ -1,32 +1,49 @@
-// import Essentia from 'https://cdn.jsdelivr.net/npm/essentia.js@<version>/dist/essentia.js-core.es.js';
-// // import essentia-wasm-module
-// import { EssentiaWASM } from 'https://cdn.jsdelivr.net/npm/essentia.js@<version>/dist/essentia-wasm.es.js';
-//
-// const essentia = new Essentia(EssentiaWASM);
-//
-// const offlineAudioCtx = new AudioContext();
-//
-// let audioURL = "https://freesound.org/data/previews/328/328857_230356-lq.mp3";
-//
-// const audioBuffer = essentia.getAudioBufferFromURL(audioURL, offlineAudioCtx);
-//
-// const vectorizedAudio = essentia.arrayToVector(audioBuffer.getChannelData(0));
-//
-//
-//
-// // audioData = essentia.MonoLoader(rawAudio)
-//
-// // generate overlapping frames of audio signal from given parameters
-// const frames = essentia.FrameGenerator(vectorizedAudio,
-//                                       1024, // frameSize
-//                                       512); // hopSize
-//
-// // Iterate through every frame and do the desired audio processing
-// // In this case, we just apply a hanning window to the signal
-// for (var i=0; i<frames.size(); i++) {
-//     // apply a window (hanning) to the signal using the default parameters
-//     let windowedOut = essentia.Windowing(frames.get(i));
-//     console.log(windowedOut.frame);
-//
-//     // we can add any essentia algorithms here to the compute frame-wise audio feature
-// }
+let essentia;
+
+const audioURL = "https://file-examples-com.github.io/uploads/2017/11/file_example_WAV_2MG.wav";
+
+EssentiaWASM().then( async function(EssentiaWasm) {
+    essentia = new Essentia(EssentiaWasm);
+
+    console.log("using essentia version " + essentia.version)
+
+    // prints all the available algorithms in essentia.js
+    // console.log(essentia.algorithmNames);
+
+    const offlineAudioCtx = new AudioContext();
+
+    console.logToScreen("loading audio data: " + audioURL)
+
+    const audioData = await essentia.getAudioChannelDataFromURL(audioURL, offlineAudioCtx);
+
+    console.logToScreen("finished loading audio data");
+
+    console.logToScreen("extracting audio features...");
+
+    // generates frames, output type VectorVectorFloat
+    const frames = essentia.FrameGenerator(audioData,
+                                           1024, // frameSize
+                                           512); // hopSize
+
+    var rmsArray = [];
+    var specArray = [];
+
+    // iterate through each frame, compute audio features
+    for (var i=0; i<frames.size(); i++) {
+        // windowing (default = hanning)
+        let windowedOut = essentia.Windowing(frames.get(i));
+
+        // feature extraction here
+        rmsArray.push(essentia.RMS(windowedOut.frame).rms);
+        specArray.push(essentia.Centroid(windowedOut.frame).centroid);
+
+        // console.log(essentia.Chromagram(windowedOut.frame))
+    }
+
+    document.rmsArray = rmsArray;
+    document.specArray = specArray;
+
+    console.logToScreen("finished extracting audio features");
+
+    plotOfflineData()
+});
